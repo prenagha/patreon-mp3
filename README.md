@@ -12,5 +12,7 @@ Copy `config-sample.ini` to `config.ini` and edit accordingly
 Uses a few Python libraries
 
 `pip3 install feedparser`
+
 `pip3 install requests`
+
 `pip3 install eye3d`
