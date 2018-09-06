@@ -11,8 +11,20 @@ Copy `config-sample.ini` to `config.ini` and edit accordingly
 
 Uses a few Python libraries
 
+## FeedParser
+
 `pip3 install feedparser`
 
+[https://github.com/kurtmckee/feedparser](https://github.com/kurtmckee/feedparser)
+
+## Requests
+
+[https://github.com/requests/requests](https://github.com/requests/requests)
+
 `pip3 install requests`
+
+## Eye3D
+
+[https://github.com/nicfit/eyeD3](https://github.com/nicfit/eyeD3)
 
 `pip3 install eye3d`
