@@ -8,7 +8,7 @@ import time
 import os
 import configparser
 from eyed3.id3 import Tag
-from eyed3.id3 import ID3_V1_0, ID3_V1_1, ID3_V2_3, ID3_V2_4
+from eyed3.id3 import ID3_V2_4
 from pathlib import Path
 
 parser = configparser.ConfigParser()
@@ -37,11 +37,8 @@ for item in f.entries:
   dt = item.published_parsed
   for enc in item.enclosures:
     audioUrl = enc.url
-    ext = '.mp3'
-    wav = audioUrl.lower().endswith('wav')
-    if wav:
-      ext = '.wav'
-    audioFileName = download_name(time.strftime("%Y%m%d", dt) + '_' + song) + ext
+    ext = re.sub(r'.*\.',r'', audioUrl.lower())
+    audioFileName = download_name(time.strftime("%Y%m%d", dt) + '_' + song) + '.' + ext
     if Path(audioFileName).is_file():
       continue
 
@@ -51,7 +48,7 @@ for item in f.entries:
         for chunk in audioResponse.iter_content(chunk_size=128):
           audioFile.write(chunk)
       audioFile.close()
-      if not wav:
+      if ext != 'wav':
         t = Tag()
         t.artist = artist
         t.album_artist = artist
