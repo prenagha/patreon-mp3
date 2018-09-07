@@ -34,7 +34,7 @@ for item in f.entries:
   cnt += 1
   song = item.title
   comment = item.summary.replace('<br>','').strip()
-  dt = item.published_parsed
+  published = item.published_parsed
   for enc in item.enclosures:
     audioUrl = enc.url
     ext = re.sub(r'.*\.',r'', audioUrl.lower())
@@ -55,11 +55,11 @@ for item in f.entries:
         t.album = cfg.get('Album')
         t.title = song[:100]
         t.comments.set(comment)
-        t.release_date = time.strftime("%Y-%m-%d", dt)
-        t.recording_date = time.strftime("%Y", dt)
+        t.release_date = time.strftime("%Y-%m-%d", published)
+        t.recording_date = time.strftime("%Y", published)
         t.genre = cfg.get('Genre')
         t.track_num = (cnt,len(f.entries))
         t.disc_num = (1,1)
         t.images.set(3, imageResponse.content, imageResponse.headers['content-type'])
         t.save(audioFileName, version=ID3_V2_4)
-      os.utime(audioFileName, (time.mktime(dt), time.mktime(dt)))
+      os.utime(audioFileName, (time.mktime(published), time.mktime(published)))
