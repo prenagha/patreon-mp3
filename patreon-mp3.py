@@ -38,7 +38,7 @@ for item in f.entries:
   for enc in item.enclosures:
     audioUrl = enc.url
     ext = re.sub(r'.*\.',r'', audioUrl.lower())
-    audioFileName = download_name(time.strftime("%Y%m%d", dt) + '_' + song) + '.' + ext
+    audioFileName = download_name(time.strftime("%Y%m%d", published) + '_' + song) + '.' + ext
     if Path(audioFileName).is_file():
       continue
 
@@ -48,6 +48,7 @@ for item in f.entries:
         for chunk in audioResponse.iter_content(chunk_size=128):
           audioFile.write(chunk)
       audioFile.close()
+      audioResponse.close()
       if ext != 'wav':
         t = Tag()
         t.artist = artist
