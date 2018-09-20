@@ -70,15 +70,16 @@ for item in f.entries:
     ,item.published_parsed[5]
     ,0
     )
-  # if the item is older than the most recent item from the
-  # last run, then skip it
-  if published < lastRunSeen:
-    continue;
 
   # keep track of the most recent RSS item we have seen this run
   if published > lastSeen:
     lastSeen = published
     
+  # if the item is older than the most recent item from the
+  # last run, then skip it
+  if published <= lastRunSeen:
+    continue;
+
   # process each enclosure of the RSS item, these are the links
   # to the audio files we want to download
   for enc in item.enclosures:
