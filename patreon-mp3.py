@@ -5,50 +5,99 @@ import re
 import requests
 import shutil
 import time
+import datetime
 import os
 import configparser
+import magic
 from eyed3.id3 import Tag
 from eyed3.id3 import ID3_V2_4
 from pathlib import Path
 
-parser = configparser.ConfigParser()
-parser.read('config.ini')
-cfg = parser['feed']
-
-f = feedparser.parse(cfg.get('RSSURL'))
-    
+# function that cleans up a file name so we can use it as the 
+# local download file name
 def download_name (n):
   o = re.sub(r'\s+', r'_', n)
   o = re.sub(r'[^a-zA-Z0-9_]', r'', o).lower()
   return cfg.get('DownloadPrefix') + o[:100]
 
+# read in the configuration file
+parser = configparser.ConfigParser()
+parser.read('config.ini')
+cfg = parser['feed']
+
+# download the RSS XML and parse it
+f = feedparser.parse(cfg.get('RSSURL'))
+    
+# file where we keep track of the last entry we previously saw
+lastRunSeenFileName = cfg.get('DownloadPrefix') + '/last.txt'
+lastRunSeen = datetime.datetime.utcfromtimestamp(0)
+if Path(lastRunSeenFileName).is_file():
+  with open(lastRunSeenFileName, 'r') as ls_file:
+    lastRunSeen = datetime.datetime.fromisoformat(ls_file.read())
+
 artist = f.feed.title
-imageUrl = f.feed.image.href
 
-print ('Get artist image')
-imageResponse = requests.get(imageUrl)
+# check if we already have a cover image, if not use the
+# image specified in the RSS feed, downloading it to a local file
+coverFileName = cfg.get('DownloadPrefix') + '/cover.jpg'
+if not Path(coverFileName).is_file():
+  imageUrl = f.feed.image.href
+  print ('Download artist image')
+  imageResponse = requests.get(imageUrl)
+  with open(coverFileName, 'wb') as fd:
+    for chunk in imageResponse.iter_content(chunk_size=256):
+      fd.write(chunk)
 
+# read in the cover image and figure out what file type it is
+with open(coverFileName, 'rb') as file:
+  coverImage = file.read()
+coverImageType = magic.from_file(coverFileName, mime=True)
+
+# now loop over the RSS feed items, in reverse order, 
+# which hopefully is oldest first (so we get track numbers ordered properly)
+lastSeen = datetime.datetime.utcfromtimestamp(0)
 cnt = 0
 f.entries.reverse()
 for item in f.entries:
   cnt += 1
   song = item.title
   comment = item.summary.replace('<br>','').strip()
-  published = item.published_parsed
+  published = datetime.datetime(item.published_parsed[0]
+    ,item.published_parsed[1]
+    ,item.published_parsed[2]
+    ,item.published_parsed[3]
+    ,item.published_parsed[4]
+    ,item.published_parsed[5]
+    ,0
+    )
+  # if the item is older than the most recent item from the
+  # last run, then skip it
+  if published < lastRunSeen:
+    continue;
+
+  # keep track of the most recent RSS item we have seen this run
+  if published > lastSeen:
+    lastSeen = published
+    
+  # process each enclosure of the RSS item, these are the links
+  # to the audio files we want to download
   for enc in item.enclosures:
     audioUrl = enc.url
     ext = re.sub(r'.*\.',r'', audioUrl.lower())
-    audioFileName = download_name(time.strftime("%Y%m%d", published) + '_' + song) + '.' + ext
+    audioFileName = download_name(published.strftime("%Y%m%d") + '_' + song) + '.' + ext
     if Path(audioFileName).is_file():
       continue
 
-    print ('Downloading audio file ' + str(cnt) + '/' + str(len(f.entries)) + ' ' + song)
+    print('Downloading new item ' + audioFileName)
+
+    # go get the audio file and save it locally    
     with requests.get(audioUrl) as audioResponse:
       with open(audioFileName, 'wb') as audioFile:
         for chunk in audioResponse.iter_content(chunk_size=128):
           audioFile.write(chunk)
       audioFile.close()
       audioResponse.close()
+      # replace the MP3 ID tags in the downloaded audio file
       if ext != 'wav':
         t = Tag()
         t.artist = artist
@@ -56,11 +105,17 @@ for item in f.entries:
         t.album = cfg.get('Album')
         t.title = song[:100]
         t.comments.set(comment)
-        t.release_date = time.strftime("%Y-%m-%d", published)
-        t.recording_date = time.strftime("%Y", published)
+        t.release_date = published.strftime("%Y-%m-%d")
+        t.recording_date = published.strftime("%Y")
         t.genre = cfg.get('Genre')
-        t.track_num = (cnt,len(f.entries))
+        t.track_num = (cnt)
         t.disc_num = (1,1)
-        t.images.set(3, imageResponse.content, imageResponse.headers['content-type'])
+        t.images.set(3, coverImage, coverImageType)
         t.save(audioFileName, version=ID3_V2_4)
-      os.utime(audioFileName, (time.mktime(published), time.mktime(published)))
+      # set the OS file time to the published time
+      os.utime(audioFileName, (datetime.mktime(published), datetime.mktime(published)))
+
+# write out the newest item we saw, so we can skip previous
+# items on next run
+with open(lastRunSeenFileName, 'w') as ls_file:
+  print(lastSeen.isoformat(), end='', file=ls_file)
