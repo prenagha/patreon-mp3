@@ -64,7 +64,7 @@ for item in f.entries:
   try:
     comment = item.summary.replace('<br>','').strip()
   except:
-    continue
+    pass
   published = datetime.datetime(item.published_parsed[0]
     ,item.published_parsed[1]
     ,item.published_parsed[2]
