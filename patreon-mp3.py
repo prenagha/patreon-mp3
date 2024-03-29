@@ -61,7 +61,10 @@ f.entries.reverse()
 for item in f.entries:
   cnt += 1
   song = item.title
-  comment = item.summary.replace('<br>','').strip()
+  try:
+    comment = item.summary.replace('<br>','').strip()
+  except:
+    pass
   published = datetime.datetime(item.published_parsed[0]
     ,item.published_parsed[1]
     ,item.published_parsed[2]
@@ -114,7 +117,7 @@ for item in f.entries:
         t.images.set(3, coverImage, coverImageType)
         t.save(audioFileName, version=ID3_V2_4)
       # set the OS file time to the published time
-      os.utime(audioFileName, (datetime.mktime(published), datetime.mktime(published)))
+      os.utime(audioFileName, (time.mktime(published.timetuple()), time.mktime(published.timetuple())))
 
 # write out the newest item we saw, so we can skip previous
 # items on next run
