@@ -23,8 +23,8 @@ Uses a few Python libraries
 
 `pip3 install requests`
 
-## Eye3D
+## EyeD3
 
 [https://github.com/nicfit/eyeD3](https://github.com/nicfit/eyeD3)
 
-`pip3 install eye3d`
+`pip3 install eyed3`
