@@ -12,6 +12,7 @@ import magic
 from eyed3.id3 import Tag
 from eyed3.id3 import ID3_V2_4
 from pathlib import Path
+from urllib.parse import urlparse
 
 # function that cleans up a file name so we can use it as the 
 # local download file name
@@ -30,7 +31,7 @@ f = feedparser.parse(cfg.get('RSSURL'))
     
 # file where we keep track of the last entry we previously saw
 lastRunSeenFileName = cfg.get('DownloadPrefix') + '/last.txt'
-lastRunSeen = datetime.datetime.utcfromtimestamp(0)
+lastRunSeen = datetime.datetime.fromtimestamp(0, tz=datetime.timezone.utc)
 if Path(lastRunSeenFileName).is_file():
   with open(lastRunSeenFileName, 'r') as ls_file:
     lastRunSeen = datetime.datetime.fromisoformat(ls_file.read())
@@ -55,7 +56,7 @@ coverImageType = magic.from_file(coverFileName, mime=True)
 
 # now loop over the RSS feed items, in reverse order, 
 # which hopefully is oldest first (so we get track numbers ordered properly)
-lastSeen = datetime.datetime.utcfromtimestamp(0)
+lastSeen = datetime.datetime.fromtimestamp(0)
 cnt = 0
 f.entries.reverse()
 for item in f.entries:
@@ -81,14 +82,21 @@ for item in f.entries:
   # if the item is older than the most recent item from the
   # last run, then skip it
   if published <= lastRunSeen:
-    continue;
+    continue
 
   # process each enclosure of the RSS item, these are the links
   # to the audio files we want to download
   for enc in item.enclosures:
     audioUrl = enc.url
-    ext = re.sub(r'.*\.',r'', audioUrl.lower())
-    audioFileName = download_name(published.strftime("%Y%m%d") + '_' + song) + '.' + ext
+    parsed_url = urlparse(audioUrl)
+    base_audioUrl = parsed_url.path
+    #print(f"audioUrl: {audioUrl}")          # DEBUG: Print the original URL
+    #print(f"base_audioUrl: {base_audioUrl}") # DEBUG: Print the base URL after parsing
+    ext = re.sub(r'.*\.',r'', base_audioUrl.lower()) # Use base_audioUrl here
+    song_base_filename = download_name(published.strftime("%Y%m%d") + '_' + song) # Calculate base filename
+    audioFileName = song_base_filename + '.' + ext # Combine with extension
+    #print(f"audioFileName: {audioFileName}") # DEBUG: Print the generated filename
+
     if Path(audioFileName).is_file():
       continue
 
