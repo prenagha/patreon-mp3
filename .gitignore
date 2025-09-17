@@ -2,3 +2,4 @@ config.ini
 downloads
 rss.xml
 cover.jpg
+.venv/
