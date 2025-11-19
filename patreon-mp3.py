@@ -9,17 +9,46 @@ import datetime
 import os
 import configparser
 import magic
+import mimetypes
+import argparse
 from eyed3.id3 import Tag
 from eyed3.id3 import ID3_V2_4
 from pathlib import Path
 from urllib.parse import urlparse
+
+# common MIME-to-extension mapping for audio types
+MIME_MAP = {
+  'audio/mpeg': 'mp3',
+  'audio/mp3': 'mp3',
+  'audio/x-wav': 'wav',
+  'audio/wav': 'wav',
+  'audio/flac': 'flac',
+  'audio/x-flac': 'flac',
+  'audio/ogg': 'ogg',
+  'application/ogg': 'ogg',
+  'audio/webm': 'webm',
+  'audio/aac': 'aac',
+  'audio/mp4': 'm4a',
+  'video/mp4': 'm4a',
+}
 
 # function that cleans up a file name so we can use it as the 
 # local download file name
 def download_name (n):
   o = re.sub(r'\s+', r'_', n)
   o = re.sub(r'[^a-zA-Z0-9_]', r'', o).lower()
-  return cfg.get('DownloadPrefix') + o[:100]
+  prefix = cfg.get('DownloadPrefix')
+  if not prefix.endswith(os.sep):
+    prefix = prefix + os.sep
+  return os.path.join(prefix, o[:100])
+
+# parse CLI args (do this early so we can run dry-runs)
+argp = argparse.ArgumentParser(description='Patreon RSS audio downloader')
+argp.add_argument('-n', '--dry-run', action='store_true', help='Do not download files or write state; only print planned actions')
+argp.add_argument('-v', '--verbose', action='store_true', help='Enable verbose debug output')
+args = argp.parse_args()
+DRY_RUN = args.dry_run
+VERBOSE = args.verbose
 
 # read in the configuration file
 parser = configparser.ConfigParser()
@@ -90,14 +119,70 @@ for item in f.entries:
     audioUrl = enc.url
     parsed_url = urlparse(audioUrl)
     base_audioUrl = parsed_url.path
-    #print(f"audioUrl: {audioUrl}")          # DEBUG: Print the original URL
-    #print(f"base_audioUrl: {base_audioUrl}") # DEBUG: Print the base URL after parsing
-    ext = re.sub(r'.*\.',r'', base_audioUrl.lower()) # Use base_audioUrl here
-    song_base_filename = download_name(published.strftime("%Y%m%d") + '_' + song) # Calculate base filename
-    audioFileName = song_base_filename + '.' + ext # Combine with extension
-    #print(f"audioFileName: {audioFileName}") # DEBUG: Print the generated filename
+    if VERBOSE:
+      print(f"audioUrl: {audioUrl}")
+      print(f"base_audioUrl: {base_audioUrl}")
+
+    # Determine file extension robustly:
+    # 1) prefer the enclosure MIME type (if provided)
+    # 2) fallback to the basename of the URL path
+    # 3) fallback to a HEAD request Content-Type
+    # 4) default to 'bin'
+
+    ext = None
+    mime = None
+    try:
+      mime = enc.get('type') if isinstance(enc, dict) else getattr(enc, 'type', None)
+    except Exception:
+      mime = None
+    if mime:
+      mime_key = mime.split(';')[0].strip().lower()
+      if mime_key in MIME_MAP:
+        ext = MIME_MAP[mime_key]
+      else:
+        guessed = mimetypes.guess_extension(mime_key)
+        if guessed:
+          ext = guessed.lstrip('.')
+
+    if not ext:
+      basename = os.path.basename(base_audioUrl)
+      if '.' in basename:
+        ext = basename.split('.')[-1].lower()
+
+    if not ext:
+      try:
+        head = requests.head(audioUrl, allow_redirects=True, timeout=10)
+        ct = head.headers.get('content-type')
+        if ct:
+          guessed = mimetypes.guess_extension(ct.split(';')[0].strip())
+          if guessed:
+            ext = guessed.lstrip('.')
+      except Exception:
+        pass
+
+    if not ext:
+      ext = 'bin'
+
+    # sanitize extension to remove any stray slashes or unexpected chars
+    ext = re.sub(r'[^a-z0-9]+', '', ext.lower())
+
+    song_base_filename = download_name(published.strftime("%Y%m%d") + '_' + song)
+    audioFileName = song_base_filename + ('.' + ext if ext else '')
+
+    # ensure parent directory exists before writing (skip creation in dry-run)
+    parent_dir = os.path.dirname(audioFileName) or '.'
+    if not DRY_RUN:
+      Path(parent_dir).mkdir(parents=True, exist_ok=True)
+
+    if VERBOSE:
+      print(f"ext: {ext}")
+      print(f"audioFileName: {audioFileName}")
 
     if Path(audioFileName).is_file():
+      continue
+
+    if DRY_RUN:
+      print('Dry-run: would download ' + audioFileName + ' from ' + audioUrl)
       continue
 
     print('Downloading new item ' + audioFileName)
@@ -128,6 +213,7 @@ for item in f.entries:
       os.utime(audioFileName, (time.mktime(published.timetuple()), time.mktime(published.timetuple())))
 
 # write out the newest item we saw, so we can skip previous
-# items on next run
-with open(lastRunSeenFileName, 'w') as ls_file:
-  print(lastSeen.isoformat(), end='', file=ls_file)
+# items on next run (skip writing state in dry-run)
+if not DRY_RUN:
+  with open(lastRunSeenFileName, 'w') as ls_file:
+    print(lastSeen.isoformat(), end='', file=ls_file)
